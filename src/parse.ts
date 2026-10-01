@@ -260,13 +260,21 @@ export function trainingReport(rows: TrainingRow[]): string {
   return `${[header, ...lines].join("\n")}\n`;
 }
 
-/** Separate mishears. A long run of words stays split; a short phrase is kept as well as its words. */
+/** The complete phrase from one attempt, not its separate words. */
 export function trainingIssues(transcript: string): string[] {
   const normal = normalizeUtterance(transcript);
-  if (!normal) return [];
-  const words = [...new Set(normal.split(" ").filter(Boolean))];
-  if (words.length > 1 && words.length <= 3) return [...words, normal];
-  return words;
+  return normal ? [normal] : [];
+}
+
+/** Drop pieces of a longer phrase from the same attempt, such as "et" and "ch" beside "etch". */
+export function fullTrainingPhrases(phrases: string[]): string[] {
+  const unique: string[] = [];
+  for (const phrase of phrases) {
+    const normal = normalizeUtterance(phrase);
+    if (!normal || unique.includes(normal)) continue;
+    unique.push(normal);
+  }
+  return unique.filter((phrase) => !unique.some((other) => other.length > phrase.length && other.includes(phrase)));
 }
 
 export function parseUtterance(raw: string): { calls: ParsedCall[]; unmatched: string } {

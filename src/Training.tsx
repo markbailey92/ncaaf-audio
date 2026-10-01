@@ -8,6 +8,8 @@ import {
   trainingIssues,
   trainingReport,
   trainingRows,
+  fullTrainingPhrases,
+  normalizeUtterance,
 } from "./parse";
 
 type Attempt = {
@@ -37,7 +39,7 @@ function loadAttempts(): Attempt[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw) as Attempt[];
     if (!Array.isArray(parsed)) return [];
-    return parsed.flatMap((attempt) =>
+    const expanded = parsed.flatMap((attempt) =>
       trainingIssues(attempt.raw).map((phrase, index) => ({
         ...attempt,
         id: trainingIssues(attempt.raw).length === 1 ? attempt.id : `${attempt.id}-${index}`,
@@ -45,6 +47,7 @@ function loadAttempts(): Attempt[] {
         alternatives: [],
       })),
     );
+    return keepFullAttempts(expanded);
   } catch {
     return [];
   }
@@ -63,6 +66,27 @@ function loadRejected(): string[] {
 
 function issueKey(label: string, phrase: string): string {
   return `${label}:${phrase}`;
+}
+
+function keepFullAttempts(attempts: Attempt[]): Attempt[] {
+  const phrasesByLabel = new Map<string, string[]>();
+  for (const attempt of attempts) {
+    const list = phrasesByLabel.get(attempt.expectedLabel) ?? [];
+    list.push(attempt.raw);
+    phrasesByLabel.set(attempt.expectedLabel, list);
+  }
+  const allowed = new Map<string, Set<string>>();
+  for (const [label, phrases] of phrasesByLabel) {
+    allowed.set(label, new Set(fullTrainingPhrases(phrases)));
+  }
+  const seen = new Set<string>();
+  return attempts.flatMap((attempt) => {
+    const phrase = normalizeUtterance(attempt.raw);
+    const key = issueKey(attempt.expectedLabel, phrase);
+    if (!phrase || seen.has(key) || !allowed.get(attempt.expectedLabel)?.has(phrase)) return [];
+    seen.add(key);
+    return [{ ...attempt, raw: phrase }];
+  });
 }
 
 function formatTime(at: number): string {
@@ -92,7 +116,6 @@ export function Training({ onClose }: { onClose: () => void }) {
   const acceptRef = useRef(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const rawRef = useRef("");
-  const alternativesRef = useRef<string[]>([]);
   const seenFinalsRef = useRef(0);
   const rejectedRef = useRef(rejected);
   rejectedRef.current = rejected;
@@ -126,26 +149,25 @@ export function Training({ onClose }: { onClose: () => void }) {
     };
   }, []);
 
-  function remember(text: string, alts: string[]) {
+  function remember(text: string) {
     rawRef.current = text;
-    alternativesRef.current = alts;
     setRaw(text);
   }
 
   function storeIssues(transcripts: string[]) {
     const currentCall = callRef.current;
-    const phrases = transcripts.flatMap((transcript) => trainingIssues(transcript));
+    const phrases = fullTrainingPhrases(transcripts);
     if (phrases.length === 0) return;
     setAttempts((current) => {
-      const existing = new Set(current.map((attempt) => issueKey(attempt.expectedLabel, attempt.raw)));
       const blocked = new Set(rejectedRef.current);
-      const next = [...current];
+      const added: Attempt[] = [];
+      const existing = new Set(current.map((attempt) => issueKey(attempt.expectedLabel, normalizeUtterance(attempt.raw))));
       for (const phrase of phrases) {
         const key = issueKey(currentCall.label, phrase);
         if (existing.has(key) || blocked.has(key) || isKnownPhrase(currentCall.label, phrase)) continue;
         existing.add(key);
         const found = parseUtterance(phrase).calls;
-        next.unshift({
+        added.push({
           id: crypto.randomUUID(),
           expectedLabel: currentCall.label,
           expectedType: currentCall.actionType,
@@ -156,7 +178,7 @@ export function Training({ onClose }: { onClose: () => void }) {
           at: Date.now(),
         });
       }
-      return next;
+      return keepFullAttempts([...added, ...current]);
     });
   }
 
@@ -166,7 +188,7 @@ export function Training({ onClose }: { onClose: () => void }) {
     setListening(false);
     recognitionRef.current?.stop();
     recognitionRef.current = null;
-    storeIssues([rawRef.current, ...alternativesRef.current]);
+    storeIssues([rawRef.current]);
     seenFinalsRef.current = 0;
   }
   stopRef.current = stop;
@@ -178,31 +200,23 @@ export function Training({ onClose }: { onClose: () => void }) {
       setError("This browser can't hear speech. Open the page in Chrome or Safari.");
       return;
     }
-    remember("", []);
+    remember("");
     const recognition = new Speech();
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.maxAlternatives = 5;
+    recognition.maxAlternatives = 1;
     recognition.lang = "en-US";
     recognition.onresult = (event) => {
       if (!acceptRef.current) return;
       const latest = event.results[event.results.length - 1];
-      const alts: string[] = [];
-      for (let alt = 1; alt < latest.length; alt += 1) {
-        const guess = latest[alt]?.transcript?.trim();
-        if (guess) alts.push(guess);
-      }
-      remember(latest[0]?.transcript?.trim() ?? "", alts);
+      remember(latest[0]?.transcript?.trim() ?? "");
       const finals: string[] = [];
       for (let resultIndex = seenFinalsRef.current; resultIndex < event.results.length; resultIndex += 1) {
         const result = event.results[resultIndex];
         if (!result.isFinal) continue;
         seenFinalsRef.current = resultIndex + 1;
-        finals.push(result[0]?.transcript ?? "");
-        for (let alt = 1; alt < result.length; alt += 1) {
-          const guess = result[alt]?.transcript?.trim();
-          if (guess) finals.push(guess);
-        }
+        const transcript = result[0]?.transcript?.trim();
+        if (transcript) finals.push(transcript);
       }
       storeIssues(finals);
     };
@@ -212,7 +226,7 @@ export function Training({ onClose }: { onClose: () => void }) {
       stop();
     };
     recognition.onend = () => {
-      storeIssues([rawRef.current, ...alternativesRef.current]);
+      storeIssues([rawRef.current]);
       seenFinalsRef.current = 0;
       if (!listeningRef.current) return;
       try {
@@ -280,7 +294,7 @@ export function Training({ onClose }: { onClose: () => void }) {
     const leaving = call.label;
     setIndex(bounded);
     setLogFilter((current) => (current === leaving ? CALLS[bounded].label : current));
-    remember("", []);
+    remember("");
     setError(null);
     setIncluded(inclusionsFor(CALLS[bounded].label));
   }

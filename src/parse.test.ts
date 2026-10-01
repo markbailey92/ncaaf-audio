@@ -8,6 +8,7 @@ import {
   preferredTranscript,
   setInclusionPhrases,
   trainingIssues,
+  fullTrainingPhrases,
   trainingReport,
   trainingRows,
 } from "./parse.ts";
@@ -136,8 +137,10 @@ assert.deepEqual(types("zooble"), ["Tackle"]);
 setInclusionPhrases([]);
 assert.deepEqual(types("zooble"), []);
 assert.deepEqual(trainingIssues("tickle"), ["tickle"]);
-assert.deepEqual(trainingIssues("fare catch"), ["fare", "catch", "fare catch"]);
-assert.deepEqual(trainingIssues("tickle tackle through the"), ["tickle", "tackle", "through", "the"]);
+assert.deepEqual(trainingIssues("fare catch"), ["fare catch"]);
+assert.deepEqual(trainingIssues("etch"), ["etch"]);
+assert.deepEqual(trainingIssues("tickle tackle through the"), ["tickle tackle through the"]);
+assert.deepEqual(fullTrainingPhrases(["et", "ch", "etch"]), ["etch"]);
 const rows = trainingRows(
   [
     { expectedLabel: "Fair Catch", expectedType: "FairCatch", raw: "fare catch" },
