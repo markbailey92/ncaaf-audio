@@ -18,6 +18,8 @@ function types(text: string): string[] {
 
 assert.deepEqual(types("snap"), ["Snap"]);
 assert.deepEqual(types("snapped"), ["Snap"]);
+assert.deepEqual(types("flag"), ["Flag"]);
+assert.deepEqual(types("flagged"), ["Flag"]);
 assert.deepEqual(types("throw"), ["PassAttempt"]);
 assert.deepEqual(types("through"), ["PassAttempt"]);
 assert.deepEqual(types("threw"), ["PassAttempt"]);
@@ -74,8 +76,9 @@ assert.deepEqual(
   liveUpdate("add 15", [{ heard: "Add 1", actionType: "1yardgain" }], false),
   { kind: "replace-last", calls: [{ heard: "Add 15", actionType: "15yardgain" }] },
 );
-assert.deepEqual(types("0yardgain"), ["0yardgain"]);
-assert.deepEqual(types("0 yard gain"), ["0yardgain"]);
+assert.deepEqual(types("0yardgain"), []);
+assert.deepEqual(types("0 yard gain"), []);
+assert.deepEqual(types("zero yard gain"), []);
 assert.deepEqual(types("0"), []);
 assert.deepEqual(types("return"), ["Return"]);
 assert.equal(parseUtterance("hello throw please").unmatched, "hello please");
@@ -142,17 +145,16 @@ const rows = trainingRows(
     { expectedLabel: "Tackle", expectedType: "Tackle", raw: "tickle" },
     { expectedLabel: "Tackle", expectedType: "Tackle", raw: "tackled" },
   ],
-  "Sam",
 );
 assert.deepEqual(rows, [
-  { name: "Sam", word: "Tackle", actionType: "Tackle", heard: "tickle" },
-  { name: "Sam", word: "Tackle", actionType: "Tackle", heard: "tackled" },
-  { name: "Sam", word: "Fair Catch", actionType: "FairCatch", heard: "fare catch" },
+  { word: "Fair Catch", heard: "fare catch", actionType: "FairCatch" },
+  { word: "Tackle", heard: "tickle", actionType: "Tackle" },
+  { word: "Tackle", heard: "tackled", actionType: "Tackle" },
 ]);
 assert.equal(
   trainingReport(rows),
-  "Name\tword\taction.type\theard\nSam\tTackle\tTackle\ttickle\nSam\tTackle\tTackle\ttackled\nSam\tFair Catch\tFairCatch\tfare catch\n",
+  "word\theard\taction.type\nFair Catch\tfare catch\tFairCatch\nTackle\ttickle\tTackle\nTackle\ttackled\tTackle\n",
 );
-assert.equal(trainingReport([]), "Name\tword\taction.type\theard\n");
+assert.equal(trainingReport([]), "word\theard\taction.type\n");
 
 console.log("parse tests passed");

@@ -124,13 +124,9 @@ export const CALLS: CallDefinition[] = [
     ],
     actionType: "Interception",
   },
+  { label: "Flag", phrases: ["flag", "flags", "flagged", "flagging"], actionType: "Flag" },
   { label: "Add", phrases: [], actionType: "yardgain" },
-  {
-    label: "0yardgain",
-    phrases: ["0yardgain", "0 yard gain", "zero yard gain"],
-    actionType: "0yardgain",
-  },
-];
+].sort((left, right) => left.label.localeCompare(right.label));
 
 export type ParsedCall = {
   heard: string;
@@ -223,18 +219,13 @@ export function normalizeUtterance(raw: string): string {
 }
 
 export type TrainingRow = {
-  name: string;
   word: string;
   actionType: string;
   heard: string;
 };
 
-/** One row per mishear, in call order, so several people's results can be pasted into one sheet. */
-export function trainingRows(
-  attempts: { expectedLabel: string; expectedType: string; raw: string }[],
-  name: string,
-): TrainingRow[] {
-  const who = name.trim();
+/** One row per mishear, in call order, ready to paste back as a whitelist. */
+export function trainingRows(attempts: { expectedLabel: string; expectedType: string; raw: string }[]): TrainingRow[] {
   const seen = new Set<string>();
   const grouped = new Map<string, TrainingRow[]>();
   for (const attempt of attempts) {
@@ -244,7 +235,7 @@ export function trainingRows(
     if (seen.has(key)) continue;
     seen.add(key);
     const list = grouped.get(attempt.expectedLabel) ?? [];
-    list.push({ name: who, word: attempt.expectedLabel, actionType: attempt.expectedType, heard });
+    list.push({ word: attempt.expectedLabel, heard, actionType: attempt.expectedType });
     grouped.set(attempt.expectedLabel, list);
   }
 
@@ -264,8 +255,8 @@ function tsvCell(value: string): string {
 
 /** Tab-separated rows. Pasting into a spreadsheet puts each field in its own column. */
 export function trainingReport(rows: TrainingRow[]): string {
-  const header = ["Name", "word", "action.type", "heard"].join("\t");
-  const lines = rows.map((row) => [row.name, row.word, row.actionType, row.heard].map(tsvCell).join("\t"));
+  const header = ["word", "heard", "action.type"].join("\t");
+  const lines = rows.map((row) => [row.word, row.heard, row.actionType].map(tsvCell).join("\t"));
   return `${[header, ...lines].join("\n")}\n`;
 }
 

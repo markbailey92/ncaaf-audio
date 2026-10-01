@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Training } from "./Training";
 import {
   CALLS,
@@ -65,7 +65,6 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [speechReady, setSpeechReady] = useState(true);
   const [tab, setTab] = useState<"saved" | "calls">("saved");
-  const [typed, setTyped] = useState("");
   const [mode, setMode] = useState<"calls" | "train">("calls");
 
   const listeningRef = useRef(false);
@@ -331,16 +330,6 @@ export function App() {
     commitTranscript(call.label);
   }
 
-  function submitTyped(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const text = typed.trim();
-    if (!text) return;
-    if (listeningRef.current) stopCapture();
-    applyTranscript(text);
-    commitTranscript(text);
-    setTyped("");
-  }
-
   function removeEntry(id: string) {
     setLog((current) => current.filter((entry) => entry.id !== id));
   }
@@ -415,21 +404,8 @@ export function App() {
         {unmatched && <p className="unmatched">Not a call: {unmatched}</p>}
         {error && <p className="error">{error}</p>}
         {!speechReady && (
-          <p className="error">Speech recognition isn't available here. Type or tap a call to test the mapping.</p>
+          <p className="error">Speech recognition isn't available here. Tap a call to test the mapping.</p>
         )}
-        <form className="typed" onSubmit={submitTyped}>
-          <input
-            value={typed}
-            onChange={(event) => setTyped(event.target.value)}
-            placeholder="Type a call, e.g. throw catch run tackle"
-            aria-label="Type a call"
-            autoCapitalize="none"
-            autoCorrect="off"
-          />
-          <button type="submit" disabled={!typed.trim()}>
-            Add
-          </button>
-        </form>
       </section>
 
       <section className="panel">

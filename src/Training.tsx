@@ -23,7 +23,6 @@ type Attempt = {
 
 const LOG_KEY = "ncaaf-audio-training";
 const REJECT_KEY = "ncaaf-audio-training-rejected";
-const NAME_KEY = "ncaaf-audio-training-name";
 
 const SPEECH_ERRORS: Record<string, string> = {
   network: "This browser has no speech service. Open the page in Chrome or Safari.",
@@ -66,14 +65,6 @@ function issueKey(label: string, phrase: string): string {
   return `${label}:${phrase}`;
 }
 
-function loadName(): string {
-  try {
-    return localStorage.getItem(NAME_KEY) ?? "";
-  } catch {
-    return "";
-  }
-}
-
 function formatTime(at: number): string {
   return new Date(at).toLocaleTimeString([], {
     hour: "numeric",
@@ -91,7 +82,6 @@ export function Training({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [included, setIncluded] = useState<string[]>(() => inclusionsFor(CALLS[0].label));
   const [view, setView] = useState<"run" | "results">("run");
-  const [name, setName] = useState(loadName);
   const [notice, setNotice] = useState<string | null>(null);
   const [logFilter, setLogFilter] = useState(CALLS[0].label);
 
@@ -129,14 +119,6 @@ export function Training({ onClose }: { onClose: () => void }) {
       // Rejected phrases still stay hidden for this session.
     }
   }, [rejected]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(NAME_KEY, name);
-    } catch {
-      // The name still appears in the report for this session.
-    }
-  }, [name]);
 
   useEffect(() => {
     return () => {
@@ -304,7 +286,7 @@ export function Training({ onClose }: { onClose: () => void }) {
   }
 
   if (view === "results") {
-    const rows = trainingRows(attempts, name);
+    const rows = trainingRows(attempts);
     const report = trainingReport(rows);
     const ready = rows.length > 0;
     const canShare = typeof navigator.share === "function";
@@ -320,19 +302,7 @@ export function Training({ onClose }: { onClose: () => void }) {
           </button>
         </header>
 
-        <p className="results-lead">Copy this and paste it into a spreadsheet. Each row is one misheard word.</p>
-
-        <label className="results-name">
-          <span>Your name</span>
-          <input
-            value={name}
-            placeholder="So we know who sent it"
-            onChange={(event) => {
-              setName(event.target.value);
-              setNotice(null);
-            }}
-          />
-        </label>
+        <p className="results-lead">Copy this table and send it back. Each row is one word the recognizer heard.</p>
 
         <div className={canShare ? "train-nav" : "train-nav is-single"}>
           <button type="button" onClick={() => void copyReport(report)} disabled={!ready}>
@@ -349,24 +319,22 @@ export function Training({ onClose }: { onClose: () => void }) {
           <table className="results-table">
             <thead>
               <tr>
-                <th>Name</th>
                 <th>word</th>
-                <th>action.type</th>
                 <th>heard</th>
+                <th>action.type</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={4}>No mishears yet.</td>
+                  <td colSpan={3}>No mishears yet.</td>
                 </tr>
               ) : (
                 rows.map((row) => (
                   <tr key={`${row.word}:${row.heard}`}>
-                    <td>{row.name}</td>
                     <td>{row.word}</td>
-                    <td>{row.actionType}</td>
                     <td>{row.heard}</td>
+                    <td>{row.actionType}</td>
                   </tr>
                 ))
               )}

@@ -1,0 +1,14 @@
+---
+description: Push project changes to GitHub so Vercel deploys them
+alwaysApply: true
+---
+
+# Deploy to Vercel
+
+After changing this project, commit and push to `origin/main` before finishing. Vercel deploys from https://github.com/markbailey92/ncaaf-audio. Production is https://ncaaf-audio.vercel.app.
+
+- Do not update git config.
+- Use `/Applications/Xcode.app/Contents/Developer/usr/bin/git` when `/usr/bin/git` is blocked by the Xcode license.
+- If commit identity is unset, pass `-c user.name="markbailey92" -c user.email="48589304+markbailey92@users.noreply.github.com"` for that commit only.
+- Do not commit secrets (`.env*`, credentials).
+- After the push, confirm the Vercel production deployment is Ready.
