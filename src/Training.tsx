@@ -93,8 +93,11 @@ export function Training({ onClose }: { onClose: () => void }) {
   const [view, setView] = useState<"run" | "results">("run");
   const [name, setName] = useState(loadName);
   const [notice, setNotice] = useState<string | null>(null);
+  const [logFilter, setLogFilter] = useState(CALLS[0].label);
 
   const call = CALLS[index];
+  const visibleAttempts =
+    logFilter === "all" ? attempts : attempts.filter((attempt) => attempt.expectedLabel === logFilter);
   const listeningRef = useRef(false);
   const acceptRef = useRef(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
@@ -292,7 +295,9 @@ export function Training({ onClose }: { onClose: () => void }) {
   function go(next: number) {
     if (listeningRef.current) stop();
     const bounded = Math.min(CALLS.length - 1, Math.max(0, next));
+    const leaving = call.label;
     setIndex(bounded);
+    setLogFilter((current) => (current === leaving ? CALLS[bounded].label : current));
     remember("", []);
     setError(null);
     setIncluded(inclusionsFor(CALLS[bounded].label));
@@ -395,7 +400,7 @@ export function Training({ onClose }: { onClose: () => void }) {
         </p>
         <p className="train-say">Say</p>
         <p className="hero-type">{call.label}</p>
-        <p className="hero-heard">{call.actionType}</p>
+        <p className="hero-heard">{call.actionType === "yardgain" ? "then any number" : call.actionType}</p>
       </section>
 
       <div className="train-nav">
@@ -432,17 +437,40 @@ export function Training({ onClose }: { onClose: () => void }) {
           <button
             className="text-button"
             type="button"
-            onClick={() => setAttempts([])}
-            disabled={attempts.length === 0}
+            onClick={() =>
+              setAttempts((current) =>
+                logFilter === "all" ? [] : current.filter((attempt) => attempt.expectedLabel !== logFilter),
+              )
+            }
+            disabled={visibleAttempts.length === 0}
           >
             Clear
           </button>
         </div>
-        {attempts.length === 0 ? (
-          <p className="empty">No attempts yet.</p>
+        <label className="log-filter">
+          <span>Show</span>
+          <select
+            aria-label="Filter heard log by call"
+            value={logFilter}
+            onChange={(event) => setLogFilter(event.target.value)}
+          >
+            <option value="all">All calls</option>
+            {CALLS.map((item) => {
+              const count = attempts.filter((attempt) => attempt.expectedLabel === item.label).length;
+              return (
+                <option key={item.label} value={item.label}>
+                  {item.label}
+                  {count > 0 ? ` (${count})` : ""}
+                </option>
+              );
+            })}
+          </select>
+        </label>
+        {visibleAttempts.length === 0 ? (
+          <p className="empty">{logFilter === "all" ? "No attempts yet." : `No attempts for ${logFilter} yet.`}</p>
         ) : (
           <ul className="log">
-            {attempts.map((attempt) => (
+            {visibleAttempts.map((attempt) => (
               <li key={attempt.id}>
                 <div>
                   <p className="log-type">{attempt.expectedLabel}</p>

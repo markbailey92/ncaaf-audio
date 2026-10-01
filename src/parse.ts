@@ -11,6 +11,7 @@ function withFieldGoal(endings: string[]): string[] {
 }
 
 export const CALLS: CallDefinition[] = [
+  { label: "Snap", phrases: ["snap", "snaps", "snapped", "snapping"], actionType: "Snap" },
   { label: "Kick Off", phrases: ["kick off", "kickoff"], actionType: "Kickoff" },
   { label: "Return", phrases: ["return"], actionType: "Return" },
   {
@@ -123,25 +124,7 @@ export const CALLS: CallDefinition[] = [
     ],
     actionType: "Interception",
   },
-  {
-    label: "Add 10",
-    phrases: [
-      "add 10",
-      "add ten",
-      "at 10",
-      "at ten",
-      "and 10",
-      "and ten",
-      "had 10",
-      "had ten",
-      "add tan",
-      "added 10",
-      "add 10 yards",
-      "plus 10",
-      "plus ten",
-    ],
-    actionType: "10yardgain",
-  },
+  { label: "Add", phrases: [], actionType: "yardgain" },
   {
     label: "0yardgain",
     phrases: ["0yardgain", "0 yard gain", "zero yard gain"],
@@ -180,7 +163,8 @@ const INCLUSION_KEY = "ncaaf-audio-inclusions";
 let extras: Phrase[] = [];
 
 function allPhrases(): Phrase[] {
-  return extras.length === 0 ? PHRASES : PHRASES.concat(extras);
+  const included = extras.filter((item) => item.label !== "Add");
+  return included.length === 0 ? PHRASES : PHRASES.concat(included);
 }
 
 export function setInclusionPhrases(items: Inclusion[]) {
@@ -308,10 +292,22 @@ export function parseUtterance(raw: string): { calls: ParsedCall[]; unmatched: s
       continue;
     }
 
+    const yard = matchYardGain(text, index);
     let best: Phrase | null = null;
     for (const phrase of allPhrases()) {
       if (!startsAtToken(text, index, phrase.phrase)) continue;
       if (!best || phrase.phrase.length > best.phrase.length) best = phrase;
+    }
+
+    if (yard && (!best || yard.end - index >= best.phrase.length)) {
+      calls.push({
+        heard: `Add ${yard.yards}`,
+        actionType: `${yard.yards}yardgain`,
+        start: index,
+        end: yard.end,
+      });
+      index = yard.end;
+      continue;
     }
 
     if (best) {
@@ -351,8 +347,10 @@ export type SavedCall = {
 export function callGrammar(): string {
   const spoken = [
     ...new Set([...CALLS.flatMap((call) => call.phrases), ...extras.map((item) => item.phrase)]),
-  ];
-  return `#JSGF V1.0; grammar calls; public <call> = ${spoken.join(" | ")} ;`;
+  ].filter(Boolean);
+  const stems = yardStems().join(" | ");
+  const numbers = yardGrammarNumbers().join(" | ");
+  return `#JSGF V1.0; grammar calls; public <call> = ${spoken.join(" | ")} | <yards> ; <yards> = ( ${stems} ) <n> ; <n> = ${numbers} ;`;
 }
 
 function isExtendablePhrase(phrase: string): boolean {
@@ -388,6 +386,15 @@ function isLongerForm(shorterText: string, longerText: string): boolean {
 }
 
 function extendsCall(previous: SavedCall, incoming: SavedCall): boolean {
+  if (
+    previous.heard.startsWith("Add ") &&
+    incoming.heard.startsWith("Add ") &&
+    previous.actionType.endsWith("yardgain") &&
+    incoming.actionType.endsWith("yardgain") &&
+    previous.actionType !== incoming.actionType
+  ) {
+    return true;
+  }
   const shorter = CALLS.find((call) => call.label === previous.heard)?.phrases ?? [];
   const longer = CALLS.find((call) => call.label === incoming.heard)?.phrases ?? [];
   return longer.some((phrase) => shorter.some((short) => phrase.endsWith(` ${short}`)));
@@ -401,7 +408,8 @@ export function callsToCommit(raw: string, holdTrailing: boolean): SavedCall[] {
   if (holdTrailing && calls.length > 0) {
     const last = calls[calls.length - 1];
     const phrase = text.slice(last.start, last.end);
-    if (last.end === text.length && isExtendablePhrase(phrase)) visible = calls.slice(0, -1);
+    const growingNumber = last.heard.startsWith("Add ") && /\d$/.test(phrase);
+    if (last.end === text.length && (isExtendablePhrase(phrase) || growingNumber)) visible = calls.slice(0, -1);
   }
   return visible.map((call) => ({ heard: call.heard, actionType: call.actionType }));
 }
@@ -458,6 +466,111 @@ export function freshCalls(raw: string, already: SavedCall[]): SavedCall[] | nul
     heard: call.heard,
     actionType: call.actionType,
   }));
+}
+
+const YARD_STEMS = ["added", "add", "plus", "and", "had", "at"];
+
+const SMALL_NUMBERS: Record<string, number> = {
+  zero: 0,
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+  eleven: 11,
+  twelve: 12,
+  thirteen: 13,
+  fourteen: 14,
+  fifteen: 15,
+  sixteen: 16,
+  seventeen: 17,
+  eighteen: 18,
+  nineteen: 19,
+  tan: 10,
+};
+
+const TENS_NUMBERS: Record<string, number> = {
+  twenty: 20,
+  thirty: 30,
+  forty: 40,
+  fifty: 50,
+  sixty: 60,
+  seventy: 70,
+  eighty: 80,
+  ninety: 90,
+};
+
+function yardStems(): string[] {
+  const included = extras
+    .filter((item) => item.label === "Add" && !item.phrase.includes(" "))
+    .map((item) => item.phrase);
+  return [...new Set([...YARD_STEMS, ...included])].sort((left, right) => right.length - left.length);
+}
+
+function yardGrammarNumbers(): string[] {
+  const digits = Array.from({ length: 101 }, (_, value) => String(value));
+  const words = [
+    ...Object.keys(SMALL_NUMBERS),
+    ...Object.keys(TENS_NUMBERS),
+    "hundred",
+    "a hundred",
+    "one hundred",
+  ];
+  for (const tens of Object.keys(TENS_NUMBERS)) {
+    for (const [ones, extra] of Object.entries(SMALL_NUMBERS)) {
+      if (extra > 0 && extra < 10) words.push(`${tens} ${ones}`);
+    }
+  }
+  return [...new Set([...digits, ...words])];
+}
+
+function tokenAt(text: string, index: number): { token: string; end: number } | null {
+  if (index >= text.length || text[index] === " ") return null;
+  const next = text.indexOf(" ", index);
+  const end = next === -1 ? text.length : next;
+  return { token: text.slice(index, end), end };
+}
+
+function readNumber(text: string, index: number): { value: number; end: number } | null {
+  const first = tokenAt(text, index);
+  if (!first) return null;
+  if (/^\d+$/.test(first.token)) return { value: Number(first.token), end: first.end };
+  if (first.token === "hundred") return { value: 100, end: first.end };
+  const second = text[first.end] === " " ? tokenAt(text, first.end + 1) : null;
+  if ((first.token === "a" || first.token === "one") && second?.token === "hundred") {
+    return { value: 100, end: second.end };
+  }
+  if (first.token in SMALL_NUMBERS) return { value: SMALL_NUMBERS[first.token], end: first.end };
+  if (first.token in TENS_NUMBERS) {
+    let value = TENS_NUMBERS[first.token];
+    let end = first.end;
+    if (second && second.token in SMALL_NUMBERS && SMALL_NUMBERS[second.token] < 10) {
+      value += SMALL_NUMBERS[second.token];
+      end = second.end;
+    }
+    return { value, end };
+  }
+  return null;
+}
+
+/** "add" plus a number, including the old mishear stems. Optional "yards" is part of the same call. */
+function matchYardGain(text: string, index: number): { yards: number; end: number } | null {
+  const stem = yardStems().find((candidate) => startsAtToken(text, index, candidate));
+  if (!stem || text[index + stem.length] !== " ") return null;
+  const number = readNumber(text, index + stem.length + 1);
+  if (!number) return null;
+  let end = number.end;
+  const unit = text.startsWith(" yards", end) ? " yards" : text.startsWith(" yard", end) ? " yard" : "";
+  if (unit) {
+    const unitEnd = end + unit.length;
+    if (unitEnd === text.length || text[unitEnd] === " ") end = unitEnd;
+  }
+  return { yards: number.value, end };
 }
 
 function startsAtToken(text: string, index: number, phrase: string): boolean {

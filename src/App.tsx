@@ -326,6 +326,7 @@ export function App() {
 
   function tapCall(call: CallDefinition) {
     if (listeningRef.current) stopCapture();
+    if (parseUtterance(call.label).calls.length === 0) return;
     applyTranscript(call.label);
     commitTranscript(call.label);
   }

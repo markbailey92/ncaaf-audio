@@ -16,6 +16,8 @@ function types(text: string): string[] {
   return parseUtterance(text).calls.map((call) => call.actionType);
 }
 
+assert.deepEqual(types("snap"), ["Snap"]);
+assert.deepEqual(types("snapped"), ["Snap"]);
 assert.deepEqual(types("throw"), ["PassAttempt"]);
 assert.deepEqual(types("through"), ["PassAttempt"]);
 assert.deepEqual(types("threw"), ["PassAttempt"]);
@@ -42,6 +44,11 @@ assert.deepEqual(types("add ten"), ["10yardgain"]);
 assert.deepEqual(types("at 10"), ["10yardgain"]);
 assert.deepEqual(types("and ten"), ["10yardgain"]);
 assert.deepEqual(types("add 10 yards"), ["10yardgain"]);
+assert.deepEqual(types("add 15"), ["15yardgain"]);
+assert.deepEqual(types("add fifteen"), ["15yardgain"]);
+assert.deepEqual(types("plus twenty five"), ["25yardgain"]);
+assert.deepEqual(types("add 0"), ["0yardgain"]);
+assert.deepEqual(types("add"), []);
 assert.deepEqual(types("throw catch run tackle"), [
   "PassAttempt",
   "CompletePass",
@@ -56,7 +63,17 @@ assert.deepEqual(types("touch back"), ["Touchback"]);
 assert.deepEqual(types("touchback"), ["Touchback"]);
 assert.deepEqual(types("field goal missed"), ["FieldGoalMissed"]);
 assert.deepEqual(types("add 10"), ["10yardgain"]);
-assert.deepEqual(types("add 100"), []);
+assert.deepEqual(parseUtterance("add 22").calls.map((call) => call.heard), ["Add 22"]);
+assert.deepEqual(types("add 100"), ["100yardgain"]);
+assert.deepEqual(types("add a hundred"), ["100yardgain"]);
+assert.deepEqual(types("tackle add 7"), ["Tackle", "7yardgain"]);
+assert.deepEqual(callsToCommit("add 1", true), []);
+assert.deepEqual(callsToCommit("add 15", false), [{ heard: "Add 15", actionType: "15yardgain" }]);
+assert.deepEqual(callsToCommit("add fifteen", true), [{ heard: "Add 15", actionType: "15yardgain" }]);
+assert.deepEqual(
+  liveUpdate("add 15", [{ heard: "Add 1", actionType: "1yardgain" }], false),
+  { kind: "replace-last", calls: [{ heard: "Add 15", actionType: "15yardgain" }] },
+);
 assert.deepEqual(types("0yardgain"), ["0yardgain"]);
 assert.deepEqual(types("0 yard gain"), ["0yardgain"]);
 assert.deepEqual(types("0"), []);
